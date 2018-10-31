@@ -7,7 +7,7 @@ myTree = ET.parse("output.xml")
 root = myTree.getroot()
 locs = root.findall(".//location")
 parent_map = {c:p for p in root.iter() for c in p}
-needful = []
+
 for loc in locs:
     if loc.attrib['value'][:2+len(filename)] != "["+filename+"]":
         parent = parent_map[loc]
