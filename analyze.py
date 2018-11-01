@@ -38,6 +38,8 @@ def all_constructors_type(class_node, access):
     access_level = get_access_level(class_node)
     constructors = class_node.findall("constructor_t")
     constructors = [x for x in constructors if x.find("artificial").attrib['value'] == "False"]
+    if len(constructors) == 0:
+        constructors = class_node.findall("constructor_t")
     for constructor in constructors:
         if access_level[constructor] != access:
             return 0
@@ -110,10 +112,13 @@ def is_strategy_pattern(root, parent_map):
         for var in vars:
             var_type = var.find('type').attrib['value']
             if var_type.find(ns_tag) != -1:
-                var_class = classes[class_tags.index(var_type[len(ns_tag):].split()[0])]
-                # Check if the interface class doesn't have the strategy choosing function
-                if is_class_interface(var_class) and not is_choosing_in_interface(var_class, ns_tag):
-                    return 1
+                try:
+                    var_class = classes[class_tags.index(var_type[len(ns_tag):].split()[0])]
+                    # Check if the interface class doesn't have the strategy choosing function
+                    if is_class_interface(var_class) and not is_choosing_in_interface(var_class, ns_tag):
+                        return 1
+                except ValueError:
+                    continue
     return 0
 
 
@@ -151,7 +156,38 @@ def is_builder_pattern_type_1(root, parent_map):
 
 
 def is_builder_pattern_type_2(root, parent_map):
+    classes = root.findall(".//class_t")
+    classes_tags = [x.attrib['value'] for x in classes]
+    for c in classes:
+        # Check if this is the Director Class
+        # Director is a proper class, so not all constructors should be private
+        if all_constructors_type(c, "private"):
+            continue
+
+        # There must be a public func which intakes a Builder class as an argument
+        access_level = get_access_level(c)
+        public_funcs = [x for x in c.findall("member_function_t") if access_level[x] == "public"]
+        for func in public_funcs:
+            if 'value' in func.find("arguments_type").attrib:
+                for class_tag in classes_tags:
+                    if class_tag != c.attrib['value'] \
+                            and func.find("arguments_type").attrib['value'].split()[0].find(class_tag) != -1:
+                        # Check if this is the Builder Class
+                        builder_class = classes[classes_tags.index(class_tag)]
+
+                        # Builder class shouldn't have all private constructors
+                        if all_constructors_type(builder_class, "private"):
+                            continue
+
+                        # Builder class must have one public non-void returning function
+                        builder_access_level = get_access_level(builder_class)
+                        builder_pub_funcs = [x for x in builder_class.findall("member_function_t") if builder_access_level[x] == "public"]
+                        for builder_pub_func in builder_pub_funcs:
+                            if builder_pub_func.find("return_type").attrib['value'] != "None":
+                                return 1
     return 0
+
+
 
 myTree = ET.parse("output_rectified.xml")
 root = myTree.getroot()
