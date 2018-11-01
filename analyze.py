@@ -33,6 +33,17 @@ def is_class_interface(c):
             return 1
     return 0
 
+
+def all_constructors_type(class_node, access):
+    access_level = get_access_level(class_node)
+    constructors = class_node.findall("constructor_t")
+    constructors = [x for x in constructors if x.find("artificial").attrib['value'] == "False"]
+    for constructor in constructors:
+        if access_level[constructor] != access:
+            return 0
+    return 1
+
+
 # TODO:
 # 1. Check in the function body if they actually use the derived classes.
 
@@ -115,6 +126,33 @@ def is_factory_pattern(root, parent_map):
     return 0
 
 
+def is_builder_pattern_type_1(root, parent_map):
+    classes = root.findall(".//class_t")
+    for c in classes:
+        # All constructors should be private
+        if not all_constructors_type(c, "private"):
+            continue
+
+        # Has a public Class
+        access_level = get_access_level(c)
+        public_classes = [c for c in access_level.keys() if access_level[c] == "public" and c.tag == "class_t"]
+        for public_class in public_classes:
+            # Must have a public constructor
+            if all_constructors_type(public_class, "private"):
+                continue
+
+            # Must have a public function that returns an object of the parent class
+            access_level = get_access_level(public_class)
+            for func in public_class.findall("member_function_t"):
+                if access_level[func] == "public" and \
+                                func.find("return_type").attrib['value'].split()[0].find(c.attrib['value']) != -1:
+                    return 1
+    return 0
+
+
+def is_builder_pattern_type_2(root, parent_map):
+    return 0
+
 myTree = ET.parse("output_rectified.xml")
 root = myTree.getroot()
 
@@ -149,3 +187,12 @@ if is_factory_pattern(root, parent_map):
     print("Factory Pattern detected.")
 else:
     print("No Factory Pattern detected.")
+
+
+# Check for Builder Pattern
+if is_builder_pattern_type_1(root, parent_map):
+    print("Builder Pattern (No Director) detected.")
+elif is_builder_pattern_type_2(root, parent_map):
+    print("Builder Pattern (With Director) detected.")
+else:
+    print("No Builder Pattern Detected")
