@@ -26,7 +26,7 @@ def is_variable_static(node):
 
 
 def is_class_interface(c):
-    funcs = c.findall(".//member_function_t")
+    funcs = c.findall(".member_function_t")
     for func in funcs:
         is_virtual = (func.find("virtual").attrib['value'] == "pure virtual")
         if is_virtual:
@@ -61,6 +61,78 @@ def is_choosing_in_interface(i_node, ns_tag):
             # derived_classes_tags = [x.attrib['value'][len(ns_tag)+1:].split()[0] for x in derived_classes]
             return 1
     return 0
+
+
+# TODO: Merge is a bit incorrect. Please rectify
+def merge_access_level(original_level, base_level, access_type):
+    if access_type == "public":
+        for x in base_level:
+            if base_level[x] == "public" and x.attrib['value'] not in [y.attrib['value'] for y in original_level.keys()]:
+                original_level[x] = "public"
+            elif base_level[x] == "protected" and x.attrib['value'] not in [y.attrib['value'] for y in original_level.keys()]:
+                original_level[x] = "protected"
+            else:
+                continue
+    elif access_type == "protected":
+        for x in base_level:
+            if base_level[x] == "public" and x.attrib['value'] not in [y.attrib['value'] for y in
+                                                                       original_level.keys()]:
+                original_level[x] = "protected"
+            elif base_level[x] == "protected" and x.attrib['value'] not in [y.attrib['value'] for y in
+                                                                            original_level.keys()]:
+                original_level[x] = "protected"
+            else:
+                continue
+    else:
+        for x in base_level:
+            if base_level[x] == "public" and x.attrib['value'] not in [y.attrib['value'] for y in
+                                                                       original_level.keys()]:
+                original_level[x] = "private"
+            elif base_level[x] == "protected" and x.attrib['value'] not in [y.attrib['value'] for y in
+                                                                            original_level.keys()]:
+                original_level[x] = "private"
+            else:
+                continue
+    return original_level
+
+# TODO:
+# 1. Implement for multiple inheritance
+# 2. Improve code running time efficiency
+
+
+def get_all_members(root, derived_class):
+    ns_tag = root.find("namespace_t").attrib['value']
+    classes = root.findall(".//class_t")
+    class_tags = [c.attrib['value'] for c in classes]
+    path = []
+    path.append(derived_class)
+    access_level = get_access_level(derived_class)
+    while path[len(path)-1].find("base_classes") is not None:
+        base_class = classes[class_tags.index(path[len(path)-1].find("base_classes").find("class").attrib['value'][len(ns_tag):])]
+        access_level = merge_access_level(access_level, get_access_level(base_class),
+                                          path[len(path)-1].find("base_classes").find("class").find("access_type").attrib['value'])
+        path.append(base_class)
+    funcs = [x for x in access_level if x.tag == "member_function_t"]
+    vars = [x for x in access_level if x.tag == "variable_t"]
+    return access_level, funcs, vars
+
+
+def get_all_derived_classes(root, base_class):
+    ns_tag = root.find("namespace_t").attrib['value']
+    classes = root.findall(".//class_t")
+    class_tags = [c.attrib['value'] for c in classes]
+    import queue
+    myQ = queue.Queue(maxsize=100)
+    myQ.put(base_class)
+    nv_dc = []
+    while not myQ.empty():
+        class_node = myQ.get()
+        if not is_class_interface(class_node):
+            nv_dc.append(class_node)
+        if class_node.find("derived_classes") is not None:
+            for c in class_node.find("derived_classes").findall("class"):
+                myQ.put(classes[class_tags.index(c.attrib['value'][len(ns_tag):])])
+    return nv_dc
 
 
 def check_singleton_pattern(c, access_level):
@@ -167,6 +239,8 @@ def is_builder_pattern_type_2(root, parent_map):
         # There must be a public func which intakes a Builder class as an argument
         access_level = get_access_level(c)
         public_funcs = [x for x in c.findall("member_function_t") if access_level[x] == "public"]
+        if len(public_funcs) < 2:
+            continue
         for func in public_funcs:
             if 'value' in func.find("arguments_type").attrib:
                 for class_tag in classes_tags:
@@ -187,6 +261,70 @@ def is_builder_pattern_type_2(root, parent_map):
                                 return 1
     return 0
 
+
+def is_command_pattern(root, parent_map):
+    ns_tag = root.find("namespace_t").attrib['value']
+    classes = root.findall(".//class_t")
+    for c in classes:
+        if is_class_interface(c):
+            # Check if this is the command class
+            # Get all non-virtual derived classes
+            non_virtual_derived_classes = get_all_derived_classes(root, c)
+            non_virtual_derived_classes = [x for x in non_virtual_derived_classes if not is_class_interface(x)]
+
+            # Check if each of these follows the command pattern
+            flag = 0
+            for nc_dc in non_virtual_derived_classes:
+                access_level, funcs, vars = get_all_members(root, nc_dc)
+                # TODO: Implement stricter checks on this function by scanning the function body
+                # Must have a public function without any argument
+                pub_funcs = [x for x in funcs if access_level[x] == "public"]
+                if len(pub_funcs) == 0:
+                    flag = 1
+                    break
+
+                # Must have a public constructor with an argument type that must already be a member private object
+                constructors = [x for x in nc_dc.findall("constructor_t") if access_level[x] == "public"]
+                if len(constructors) == 0:
+                    flag = 1
+                    break
+                private_object_types = [x.find("type").attrib['value'].split()[0][len(ns_tag):] for x in vars if access_level[x] == "private"]
+                count = 0
+                for constructor in constructors:
+                    if 'value' in constructor.find("arguments_type").attrib:
+                        for object_type in private_object_types:
+                            if constructor.find("arguments_type").attrib['value'].split()[0].find(object_type) != -1:
+                                count += 1
+                if count == 0:
+                    flag = 1
+                    break
+
+            if flag:
+                continue
+            else:
+                return 1
+        elif c.find("base_classes") is None:
+            # TODO: Implement stricter checks on this function by scanning the function body
+            # Must have a public function without any argument
+            access_level = get_access_level(c)
+            pub_funcs = [x for x in c.findall("member_function_t") if access_level[x] == "public"]
+            pub_funcs = [x for x in pub_funcs if 'value' not in x.find("arguments_type").attrib]
+            if len(pub_funcs) == 0:
+                continue
+
+            # Must have a public constructor with an argument type that must already be a member private object
+            constructors = [x for x in c.findall("constructor_t") if access_level[x] == "public"]
+            if len(constructors) == 0:
+                continue
+            private_object_types = [x.find("type").attrib['value'] for x in c.findall("variable_t") if access_level[x] == "private"]
+            for constructor in constructors:
+                if 'value' in constructor.find("arguments_type").attrib:
+                    for object_type in private_object_types:
+                        if constructor.find("arguments_type").attrib['value'].find(object_type) != -1:
+                            return 1
+        else:
+            continue
+    return 0
 
 
 myTree = ET.parse("output_rectified.xml")
@@ -224,7 +362,6 @@ if is_factory_pattern(root, parent_map):
 else:
     print("No Factory Pattern detected.")
 
-
 # Check for Builder Pattern
 if is_builder_pattern_type_1(root, parent_map):
     print("Builder Pattern (No Director) detected.")
@@ -232,3 +369,9 @@ elif is_builder_pattern_type_2(root, parent_map):
     print("Builder Pattern (With Director) detected.")
 else:
     print("No Builder Pattern Detected")
+
+# Check for Builder Pattern
+if is_command_pattern(root, parent_map):
+    print("Command Pattern detected.")
+else:
+    print("No Command Pattern detected")
