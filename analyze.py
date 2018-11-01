@@ -198,7 +198,7 @@ def is_factory_pattern(root, parent_map):
     ns_tag = root.find("namespace_t").attrib['value']
     classes = root.findall(".//class_t")
     for c in classes:
-        if is_class_interface(c) and is_choosing_in_interface(c, ns_tag):
+        if c.find("derived_classes") is not None and is_choosing_in_interface(c, ns_tag):
             return 1
     return 0
 
@@ -232,8 +232,8 @@ def is_builder_pattern_type_2(root, parent_map):
     classes_tags = [x.attrib['value'] for x in classes]
     for c in classes:
         # Check if this is the Director Class
-        # Director is a proper class, so not all constructors should be private
-        if all_constructors_type(c, "private"):
+        # Director is a proper class, so not all constructors should be private and should be non-virtual
+        if all_constructors_type(c, "private") or is_class_interface(c):
             continue
 
         # There must be a public func which intakes a Builder class as an argument
@@ -257,7 +257,7 @@ def is_builder_pattern_type_2(root, parent_map):
                         builder_access_level = get_access_level(builder_class)
                         builder_pub_funcs = [x for x in builder_class.findall("member_function_t") if builder_access_level[x] == "public"]
                         for builder_pub_func in builder_pub_funcs:
-                            if builder_pub_func.find("return_type").attrib['value'] != "None":
+                            if builder_pub_func.find("return_type").attrib['value'] != "void":
                                 return 1
     return 0
 
