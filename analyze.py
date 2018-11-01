@@ -38,9 +38,9 @@ def is_class_interface(c):
 
 def is_choosing_in_interface(i_node, ns_tag):
     static_funcs = i_node.findall(".//member_function_t")
+    static_funcs = [x for x in static_funcs if x.find("is_static").attrib['value'] == "1"]
     for func in static_funcs:
-        if func.find("is_static").attrib['value'] == "True" and \
-                        func.find("return_type").attrib['value'].split()[0].find(i_node.attrib['value']) != -1:
+        if func.find("return_type").attrib['value'].split()[0].find(i_node.attrib['value']) != -1:
             # Get derived classes
             derived_classes = i_node.find("derived_classes").findall("class")
             if len(derived_classes) == 0:
@@ -106,6 +106,15 @@ def is_strategy_pattern(root, parent_map):
     return 0
 
 
+def is_factory_pattern(root, parent_map):
+    ns_tag = root.find("namespace_t").attrib['value']
+    classes = root.findall(".//class_t")
+    for c in classes:
+        if is_class_interface(c) and is_choosing_in_interface(c, ns_tag):
+            return 1
+    return 0
+
+
 myTree = ET.parse("output_rectified.xml")
 root = myTree.getroot()
 
@@ -134,3 +143,9 @@ if is_strategy_pattern(root, parent_map):
     print("Strategy Pattern detected.")
 else:
     print("No Strategy Pattern detected.")
+
+# Check for Factory Pattern
+if is_factory_pattern(root, parent_map):
+    print("Factory Pattern detected.")
+else:
+    print("No Factory Pattern detected.")
