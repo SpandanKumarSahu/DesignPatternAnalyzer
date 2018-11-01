@@ -10,5 +10,8 @@ os.system("python convert_to_xml.py > output.xml")
 # Get curate XML file
 os.system("python curate_xml.py " + str(sys.argv[1]))
 
+# Analyze the design pattern
+os.system("python analyze.py " + str(sys.argv[1]))
+
 # Cleanup
 os.system("rm output.txt output.xml output_rectified.xml")
